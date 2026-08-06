@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, ExternalLink, ArrowRightLeft, ShieldAlert, Sparkles, Film, Info } from 'lucide-react';
+import { Play, ExternalLink, ArrowRightLeft, ShieldAlert, Sparkles, Film, Info, Image as ImageIcon } from 'lucide-react';
 import { VideoConfig } from '../types';
 
 interface VideoPlayerProps {
@@ -16,7 +16,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
   const [imgError, setImgError] = useState(false);
 
-  // Helper to extract YouTube video embed if possible
+  const mediaType = config.mediaType || 'image';
+  const buttonLabel = config.buttonText || '▶ مشاهدة الفيديو';
+
+  // Helper to extract YouTube or Vimeo embed URL if applicable
   const getEmbedUrl = (url: string) => {
     try {
       if (url.includes('youtube.com/watch') || url.includes('youtu.be/')) {
@@ -38,6 +41,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const embedUrl = getEmbedUrl(config.videoUrl);
 
+  const isDataVideo = config.thumbnailUrl.startsWith('data:video/') || config.thumbnailUrl.endsWith('.mp4') || config.thumbnailUrl.endsWith('.webm');
+
   return (
     <div className="w-full space-y-8">
       {/* Video Title */}
@@ -46,7 +51,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           {config.videoTitle || 'عنوان الفيديو هنا'}
         </h1>
         <p className="text-sm text-[#a0a8a0] max-w-xl mx-auto flex items-center justify-center gap-2">
-          <span>اضغط على زر "مشاهدة الفيديو" لفتح الفيديو وإعادة توجيه هذه الصفحة</span>
+          <span>اضغط على زر "{buttonLabel}" لفتح الفيديو وإعادة توجيه هذه الصفحة</span>
         </p>
       </div>
 
@@ -60,14 +65,31 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
           />
+        ) : mediaType === 'video' || isDataVideo ? (
+          <div className="relative w-full h-full flex items-center justify-center bg-black">
+            <video
+              src={config.thumbnailUrl}
+              controls
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-full h-full object-cover"
+            />
+            {/* Top Right Tag */}
+            <div className="absolute top-4 right-4 z-10 px-3 py-1.5 rounded-md bg-[#0d0f0d]/80 backdrop-blur-sm border border-[#2a2e2a] text-xs font-semibold text-[#2ecc71] flex items-center gap-1.5 pointer-events-none">
+              <Film className="w-3.5 h-3.5" />
+              <span>فيديو محمل</span>
+            </div>
+          </div>
         ) : (
           <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-gradient-to-t from-[#0d0f0d] to-[#161916]">
-            {/* Thumbnail Image */}
+            {/* Thumbnail Image or GIF */}
             <img
               src={imgError || !config.thumbnailUrl ? 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1200&auto=format&fit=crop' : config.thumbnailUrl}
               alt={config.videoTitle}
               onError={() => setImgError(true)}
-              className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-500 ease-out"
+              className="w-full h-full object-cover opacity-85 group-hover:scale-105 transition-transform duration-500 ease-out"
             />
 
             {/* Gradient Overlay */}
@@ -90,8 +112,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
             {/* Top Right Tag */}
             <div className="absolute top-4 right-4 z-10 px-3 py-1.5 rounded-md bg-[#0d0f0d]/80 backdrop-blur-sm border border-[#2a2e2a] text-xs font-semibold text-[#2ecc71] flex items-center gap-1.5">
-              <Film className="w-3.5 h-3.5" />
-              <span>فيديو مقترح</span>
+              {mediaType === 'gif' ? (
+                <>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>صورة متحركة GIF</span>
+                </>
+              ) : (
+                <>
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  <span>وسائط مقترحة</span>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -104,7 +135,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           className="w-full sm:w-auto min-w-[280px] sm:min-w-[340px] px-8 py-4 bg-[#2ecc71] hover:bg-[#1e9e57] active:bg-[#188548] text-[#0d0f0d] text-lg md:text-xl font-bold rounded-xl shadow-lg shadow-[#2ecc71]/20 hover:shadow-xl hover:shadow-[#2ecc71]/30 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer flex items-center justify-center gap-3 group"
         >
           <Play className="w-6 h-6 fill-current text-[#0d0f0d] group-hover:scale-110 transition-transform" />
-          <span>▶ مشاهدة الفيديو</span>
+          <span>{buttonLabel}</span>
           <ExternalLink className="w-5 h-5 text-[#0d0f0d]/80 group-hover:translate-x-1 transition-transform" />
         </button>
 
@@ -125,7 +156,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             onClick={onOpenSettings}
             className="text-xs text-[#2ecc71] hover:underline flex items-center gap-1 cursor-pointer"
           >
-            تغيير الروابط
+            تغيير الروابط والوسائط
           </button>
         </div>
 

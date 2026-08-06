@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { X, Save, RefreshCw, Sparkles, Link2, ExternalLink, ArrowRightLeft, Image, Type, FileText } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, Save, RefreshCw, Sparkles, Link2, ExternalLink, ArrowRightLeft, Image as ImageIcon, Type, FileText, Upload, Film, FileImage, Check, Trash2, Eraser, RotateCcw } from 'lucide-react';
 import { VideoConfig, Preset } from '../types';
-import { PRESETS } from '../data/presets';
+import { PRESETS, BLANK_CONFIG, DEFAULT_CONFIG } from '../data/presets';
 
 interface ConfigModalProps {
   isOpen: boolean;
@@ -20,6 +20,10 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
 }) => {
   const [formData, setFormData] = useState<VideoConfig>({ ...config });
   const [activeTab, setActiveTab] = useState<'urls' | 'meta' | 'presets'>('urls');
+  const [uploadMode, setUploadMode] = useState<'url' | 'file'>('file');
+  const [fileName, setFileName] = useState<string>('');
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
@@ -35,8 +39,56 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
       videoUrl: preset.videoUrl,
       redirectUrl: preset.redirectUrl,
       thumbnailUrl: preset.thumbnailUrl,
+      mediaType: preset.mediaType || 'image',
       description: preset.description,
     }));
+  };
+
+  const handleClearScratch = () => {
+    setFormData(BLANK_CONFIG);
+    setFileName('');
+  };
+
+  const handleResetDefaults = () => {
+    setFormData(DEFAULT_CONFIG);
+    setFileName('');
+  };
+
+  // Handle local File Upload (Image, GIF, MP4/WebM Video)
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFileName(file.name);
+    setIsUploading(true);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (result) {
+        let detectedType: 'image' | 'gif' | 'video' = 'image';
+        if (file.type.startsWith('video/')) {
+          detectedType = 'video';
+        } else if (file.type === 'image/gif' || file.name.endsWith('.gif')) {
+          detectedType = 'gif';
+        } else {
+          detectedType = 'image';
+        }
+
+        setFormData((prev) => ({
+          ...prev,
+          thumbnailUrl: result,
+          mediaType: detectedType,
+        }));
+      }
+      setIsUploading(false);
+    };
+    reader.onerror = () => {
+      alert('حدث خطأ أثناء قراءة الملف. يرجى تجربة ملف آخر.');
+      setIsUploading(false);
+    };
+
+    reader.readAsDataURL(file);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -55,8 +107,8 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
               <ArrowRightLeft className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-[#eaeaea]">إعدادات رابط المشاهدة والتوجيه</h3>
-              <p className="text-xs text-[#a0a8a0]">تخصيص رابط المقطع المنبثق ورابط إعادة التوجيه</p>
+              <h3 className="text-lg font-bold text-[#eaeaea]">إعدادات رابط المشاهدة الوسائط والروابط</h3>
+              <p className="text-xs text-[#a0a8a0]">تخصيص المقطع، الصورة/GIF، ورابط التوجيه المنبثق</p>
             </div>
           </div>
           <button
@@ -79,7 +131,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
             }`}
           >
             <Link2 className="w-4 h-4" />
-            <span>الروابط والأداء</span>
+            <span>الروابط والتوجيه</span>
           </button>
           <button
             type="button"
@@ -90,8 +142,8 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                 : 'border-transparent text-[#a0a8a0] hover:text-[#eaeaea]'
             }`}
           >
-            <Type className="w-4 h-4" />
-            <span>العنوان والوصف والصورة</span>
+            <ImageIcon className="w-4 h-4" />
+            <span>رفع الصورة / الفيديو / GIF</span>
           </button>
           <button
             type="button"
@@ -116,7 +168,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                 <label className="text-xs font-bold text-[#eaeaea] flex items-center justify-between">
                   <span className="flex items-center gap-1.5 text-[#2ecc71]">
                     <ExternalLink className="w-4 h-4" />
-                    <span>رابط الفيديو (يفتح للمستخدم في تبويب جديد):</span>
+                    <span>رابط الفيديو المراد تشغيله للمستخدم (تبويب جديد):</span>
                   </span>
                   <span className="text-[10px] text-[#a0a8a0] font-normal">window.open</span>
                 </label>
@@ -129,7 +181,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                   className="w-full px-3.5 py-2.5 bg-[#0d0f0d] border border-[#2a2e2a] focus:border-[#2ecc71] rounded-xl text-xs text-[#eaeaea] dir-ltr text-right focus:outline-none transition-all font-mono"
                 />
                 <p className="text-[11px] text-[#a0a8a0]">
-                  هذا هو المقطع الذي يفتحه زر "مشاهدة الفيديو" للمستخدم في نافذة جديدة.
+                  هذا هو المقطع أو الموقع الذي سيفتحه زر المشاهدة للمستخدم فوراً في نافذة جديدة.
                 </p>
               </div>
 
@@ -138,7 +190,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                 <label className="text-xs font-bold text-[#eaeaea] flex items-center justify-between">
                   <span className="flex items-center gap-1.5 text-emerald-400">
                     <ArrowRightLeft className="w-4 h-4" />
-                    <span>رابط إعادة توجيه الصفحة الحالية:</span>
+                    <span>رابط إعادة توجيه الصفحة الحالية (Redirect URL):</span>
                   </span>
                   <span className="text-[10px] text-[#a0a8a0] font-normal">window.location.href</span>
                 </label>
@@ -151,8 +203,20 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                   className="w-full px-3.5 py-2.5 bg-[#0d0f0d] border border-[#2a2e2a] focus:border-[#2ecc71] rounded-xl text-xs text-[#eaeaea] dir-ltr text-right focus:outline-none transition-all font-mono"
                 />
                 <p className="text-[11px] text-[#a0a8a0]">
-                  هذا هو الرابط الذي سيتم توجيه النافذة الحالية إليه عند نقر زر المشاهدة.
+                  هذا هو الرابط الذي سيتم توجيه الصفحة الحالية إليه عند نقر الزر.
                 </p>
+              </div>
+
+              {/* Button text customization */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#eaeaea]">نص زر المشاهدة (Button Label):</label>
+                <input
+                  type="text"
+                  value={formData.buttonText || '▶ مشاهدة الفيديو'}
+                  onChange={(e) => handleChange('buttonText', e.target.value)}
+                  placeholder="▶ مشاهدة الفيديو"
+                  className="w-full px-3.5 py-2.5 bg-[#0d0f0d] border border-[#2a2e2a] focus:border-[#2ecc71] rounded-xl text-xs text-[#eaeaea] focus:outline-none transition-all"
+                />
               </div>
 
               {/* Delay & Timing Options */}
@@ -171,69 +235,213 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                   className="w-full accent-[#2ecc71] cursor-pointer"
                 />
                 <p className="text-[10px] text-[#a0a8a0]">
-                  تأخير طفيف (100-200ms) يضمن فتح النافذة المنبثقة أولاً بسلاسة قبل الانتقال بالصفحة الحالية.
+                  تأخير طفيف (100-200ms) يضمن فتح النافذة المنبثقة أولاً بسلاسة قبل التحويل.
                 </p>
               </div>
             </div>
           )}
 
           {activeTab === 'meta' && (
-            <div className="space-y-4">
-              {/* Site Name */}
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#eaeaea]">اسم الموقع:</label>
-                <input
-                  type="text"
-                  value={formData.siteName}
-                  onChange={(e) => handleChange('siteName', e.target.value)}
-                  placeholder="مثال: موقعي المميز"
-                  className="w-full px-3.5 py-2.5 bg-[#0d0f0d] border border-[#2a2e2a] focus:border-[#2ecc71] rounded-xl text-xs text-[#eaeaea] focus:outline-none transition-all"
-                />
+            <div className="space-y-5">
+              {/* Media Type Selector */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-[#eaeaea] block">نوع الوسائط المقترحة:</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleChange('mediaType', 'image')}
+                    className={`px-3 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      formData.mediaType === 'image'
+                        ? 'bg-[#2ecc71]/15 border-[#2ecc71] text-[#2ecc71]'
+                        : 'bg-[#0d0f0d] border-[#2a2e2a] text-[#a0a8a0] hover:text-[#eaeaea]'
+                    }`}
+                  >
+                    <FileImage className="w-4 h-4" />
+                    <span>صورة (Image)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleChange('mediaType', 'gif')}
+                    className={`px-3 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      formData.mediaType === 'gif'
+                        ? 'bg-[#2ecc71]/15 border-[#2ecc71] text-[#2ecc71]'
+                        : 'bg-[#0d0f0d] border-[#2a2e2a] text-[#a0a8a0] hover:text-[#eaeaea]'
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>متحركة (GIF)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleChange('mediaType', 'video')}
+                    className={`px-3 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      formData.mediaType === 'video'
+                        ? 'bg-[#2ecc71]/15 border-[#2ecc71] text-[#2ecc71]'
+                        : 'bg-[#0d0f0d] border-[#2a2e2a] text-[#a0a8a0] hover:text-[#eaeaea]'
+                    }`}
+                  >
+                    <Film className="w-4 h-4" />
+                    <span>فيديو (Video)</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Video Title */}
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#eaeaea]">عنوان الفيديو المقترح:</label>
-                <input
-                  type="text"
-                  value={formData.videoTitle}
-                  onChange={(e) => handleChange('videoTitle', e.target.value)}
-                  placeholder="عنوان الفيديو..."
-                  className="w-full px-3.5 py-2.5 bg-[#0d0f0d] border border-[#2a2e2a] focus:border-[#2ecc71] rounded-xl text-xs text-[#eaeaea] focus:outline-none transition-all"
-                />
+              {/* Upload Mode Selector: Local File vs URL */}
+              <div className="space-y-3 p-4 bg-[#0d0f0d] border border-[#2a2e2a] rounded-xl">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#eaeaea]">طريقة إضافة الوسائط:</span>
+                  <div className="flex bg-[#161916] border border-[#2a2e2a] p-1 rounded-lg gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setUploadMode('file')}
+                      className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                        uploadMode === 'file'
+                          ? 'bg-[#2ecc71] text-[#0d0f0d]'
+                          : 'text-[#a0a8a0] hover:text-[#eaeaea]'
+                      }`}
+                    >
+                      تحميل ملف من الجهاز
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUploadMode('url')}
+                      className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                        uploadMode === 'url'
+                          ? 'bg-[#2ecc71] text-[#0d0f0d]'
+                          : 'text-[#a0a8a0] hover:text-[#eaeaea]'
+                      }`}
+                    >
+                      إدخال رابط URL
+                    </button>
+                  </div>
+                </div>
+
+                {uploadMode === 'file' ? (
+                  <div className="space-y-3">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileUpload}
+                      accept="image/*,video/*,.gif"
+                      className="hidden"
+                    />
+
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-[#2a2e2a] hover:border-[#2ecc71] rounded-xl p-6 text-center cursor-pointer transition-all bg-[#161916]/50 hover:bg-[#2ecc71]/5 group space-y-2"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-[#2ecc71]/10 border border-[#2ecc71]/30 mx-auto flex items-center justify-center text-[#2ecc71] group-hover:scale-110 transition-transform">
+                        <Upload className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-[#eaeaea]">
+                          اضغط هنا لاختيار صورة، GIF، أو ملف فيديو من جهازك
+                        </p>
+                        <p className="text-[11px] text-[#a0a8a0] mt-1">
+                          يدعم صيغ MP4, WEBM, GIF, PNG, JPG, WEBP (يتم تحويل الملف تلقائياً ليكون مدمجاً جاهزاً للتصدير)
+                        </p>
+                      </div>
+                    </div>
+
+                    {fileName && (
+                      <div className="flex items-center justify-between p-2.5 bg-[#161916] border border-[#2ecc71]/30 rounded-lg text-xs">
+                        <span className="text-[#2ecc71] font-bold flex items-center gap-1.5 truncate">
+                          <Check className="w-4 h-4 shrink-0" />
+                          <span>الملف المحمل: {fileName}</span>
+                        </span>
+                        <span className="text-[10px] text-[#a0a8a0] bg-[#0d0f0d] px-2 py-0.5 rounded uppercase">
+                          {formData.mediaType}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-[#a0a8a0]">رابط الصورة أو الـ GIF أو الفيديو المباشر:</label>
+                    <input
+                      type="url"
+                      value={formData.thumbnailUrl}
+                      onChange={(e) => handleChange('thumbnailUrl', e.target.value)}
+                      placeholder="https://..."
+                      className="w-full px-3.5 py-2.5 bg-[#161916] border border-[#2a2e2a] focus:border-[#2ecc71] rounded-xl text-xs text-[#eaeaea] dir-ltr text-right focus:outline-none transition-all font-mono"
+                    />
+                  </div>
+                )}
               </div>
 
-              {/* Thumbnail URL */}
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#eaeaea]">رابط الصورة المصغرة (Thumbnail):</label>
-                <input
-                  type="url"
-                  value={formData.thumbnailUrl}
-                  onChange={(e) => handleChange('thumbnailUrl', e.target.value)}
-                  placeholder="https://..."
-                  className="w-full px-3.5 py-2.5 bg-[#0d0f0d] border border-[#2a2e2a] focus:border-[#2ecc71] rounded-xl text-xs text-[#eaeaea] dir-ltr text-right focus:outline-none transition-all font-mono"
-                />
+              {/* Site Name & Video Title */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#eaeaea]">اسم الموقع:</label>
+                  <input
+                    type="text"
+                    value={formData.siteName}
+                    onChange={(e) => handleChange('siteName', e.target.value)}
+                    placeholder="مثال: موقعي المميز"
+                    className="w-full px-3.5 py-2 bg-[#0d0f0d] border border-[#2a2e2a] focus:border-[#2ecc71] rounded-xl text-xs text-[#eaeaea] focus:outline-none transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#eaeaea]">عنوان الفيديو المقترح:</label>
+                  <input
+                    type="text"
+                    value={formData.videoTitle}
+                    onChange={(e) => handleChange('videoTitle', e.target.value)}
+                    placeholder="عنوان الفيديو..."
+                    className="w-full px-3.5 py-2 bg-[#0d0f0d] border border-[#2a2e2a] focus:border-[#2ecc71] rounded-xl text-xs text-[#eaeaea] focus:outline-none transition-all"
+                  />
+                </div>
               </div>
 
               {/* Description */}
               <div className="space-y-1">
-                <label className="text-xs font-bold text-[#eaeaea]">وصف الفيديو:</label>
+                <label className="text-xs font-bold text-[#eaeaea]">الوصف:</label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={formData.description}
                   onChange={(e) => handleChange('description', e.target.value)}
                   placeholder="الوصف..."
-                  className="w-full px-3.5 py-2.5 bg-[#0d0f0d] border border-[#2a2e2a] focus:border-[#2ecc71] rounded-xl text-xs text-[#eaeaea] focus:outline-none transition-all resize-none"
+                  className="w-full px-3.5 py-2 bg-[#0d0f0d] border border-[#2a2e2a] focus:border-[#2ecc71] rounded-xl text-xs text-[#eaeaea] focus:outline-none transition-all resize-none"
                 />
               </div>
             </div>
           )}
 
           {activeTab === 'presets' && (
-            <div className="space-y-3">
+            <div className="space-y-4">
+              {/* Quick Reset & Clear Scratch controls */}
+              <div className="p-3.5 bg-[#0d0f0d] border border-[#2a2e2a] rounded-xl flex items-center justify-between gap-3">
+                <span className="text-xs font-bold text-[#eaeaea]">إعادة التهيئة والسجلات:</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleClearScratch}
+                    className="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                    title="مسح كافة البيانات للبدء من الصفر"
+                  >
+                    <Eraser className="w-3.5 h-3.5" />
+                    <span>مسح للبدء من الصفر (Scratch)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResetDefaults}
+                    className="px-3 py-1.5 rounded-lg bg-[#2a2e2a] hover:bg-[#2a2e2a]/80 text-[#eaeaea] text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                    title="استعادة البيانات الافتراضية"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-[#2ecc71]" />
+                    <span>استعادة الافتراضي</span>
+                  </button>
+                </div>
+              </div>
+
               <p className="text-xs text-[#a0a8a0]">
-                اختر نموذجاً جاهزاً لتجربة التوجيه المزدوج فوراً:
+                أو اختر نموذجاً جاهزاً لتجربة التوجيه المزدوج فوراً:
               </p>
+
               <div className="grid grid-cols-1 gap-3">
                 {PRESETS.map((preset) => (
                   <div
@@ -242,8 +450,8 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                     className="p-3.5 bg-[#0d0f0d] border border-[#2a2e2a] hover:border-[#2ecc71] rounded-xl cursor-pointer transition-all duration-200 hover:bg-[#2ecc71]/5 space-y-1.5 group"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-[#2ecc71] group-hover:underline">
-                        {preset.label}
+                      <span className="text-xs font-bold text-[#2ecc71] group-hover:underline flex items-center gap-1">
+                        <span>{preset.label}</span>
                       </span>
                       <span className="text-[10px] bg-[#2a2e2a] text-[#a0a8a0] px-2 py-0.5 rounded">
                         تطبيق

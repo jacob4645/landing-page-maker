@@ -5,7 +5,7 @@ import { ConfigModal } from './components/ConfigModal';
 import { ExportModal } from './components/ExportModal';
 import { RedirectNotice } from './components/RedirectNotice';
 import { VideoConfig } from './types';
-import { DEFAULT_CONFIG } from './data/presets';
+import { DEFAULT_CONFIG, BLANK_CONFIG } from './data/presets';
 import { ArrowRightLeft, Sparkles, Download, Settings, FileCode } from 'lucide-react';
 
 export default function App() {
@@ -32,6 +32,16 @@ export default function App() {
       localStorage.setItem('suggested_video_config', JSON.stringify(newConfig));
     } catch (e) {
       console.error('Failed to save config:', e);
+    }
+  };
+
+  // Clear configuration completely to start from scratch
+  const handleClearScratch = () => {
+    if (window.confirm('هل أنت متاكد من مسح كافة البيانات والبدء من صفحة بيضاء (Scratch)؟')) {
+      setConfig(BLANK_CONFIG);
+      try {
+        localStorage.setItem('suggested_video_config', JSON.stringify(BLANK_CONFIG));
+      } catch (e) {}
     }
   };
 
@@ -85,6 +95,7 @@ export default function App() {
         onOpenSettings={() => setIsConfigOpen(true)}
         onOpenExport={() => setIsExportOpen(true)}
         onResetDefaults={handleResetDefaults}
+        onClearScratch={handleClearScratch}
       />
 
       {/* Main Content Area */}

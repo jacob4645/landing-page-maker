@@ -6,8 +6,16 @@ export function generateStandaloneHtml(config: VideoConfig): string {
   const videoUrl = config.videoUrl || 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
   const redirectUrl = config.redirectUrl || 'https://www.google.com';
   const thumbnailUrl = config.thumbnailUrl || 'https://placehold.co/900x506/0d0f0d/2ecc71?text=%D8%B5%D9%88%D8%B1%D8%A9+%D9%85%D8%B5%D8%BA%D8%B1%D8%A9';
+  const mediaType = config.mediaType || 'image';
+  const buttonText = config.buttonText || '▶ مشاهدة الفيديو';
   const description = config.description || 'اكتب هنا وصف الفيديو أو الصورة.';
   const delayMs = config.delayRedirectMs ?? 150;
+
+  const isVideoMedia = mediaType === 'video' || thumbnailUrl.startsWith('data:video/') || thumbnailUrl.endsWith('.mp4') || thumbnailUrl.endsWith('.webm');
+
+  const mediaElementHtml = isVideoMedia
+    ? `<video src="${escapeHtml(thumbnailUrl)}" controls autoplay loop muted playsinline style="width:100%;height:100%;object-fit:cover;"></video>`
+    : `<img src="${escapeHtml(thumbnailUrl)}" alt="${escapeHtml(videoTitle)}">`;
 
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -149,8 +157,7 @@ export function generateStandaloneHtml(config: VideoConfig): string {
   <h1 class="video-title">${escapeHtml(videoTitle)}</h1>
 
   <div class="media-wrapper">
-    <!-- صورة مصغرة للفيديو -->
-    <img src="${escapeHtml(thumbnailUrl)}" alt="${escapeHtml(videoTitle)}">
+    ${mediaElementHtml}
   </div>
 
   <div class="watch-btn-container">
@@ -163,7 +170,7 @@ export function generateStandaloneHtml(config: VideoConfig): string {
       id="watchButton"
       onclick="handleWatchClick(event)"
     >
-      ▶ مشاهدة الفيديو
+      ${escapeHtml(buttonText)}
     </a>
   </div>
 

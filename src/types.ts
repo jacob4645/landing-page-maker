@@ -3,7 +3,9 @@ export interface VideoConfig {
   videoTitle: string;
   videoUrl: string; // The URL opened for the user in a new tab when clicking watch button
   redirectUrl: string; // The URL current page redirects to after clicking watch button
-  thumbnailUrl: string;
+  thumbnailUrl: string; // URL or base64 data string for image/gif/video preview
+  mediaType: 'image' | 'gif' | 'video';
+  buttonText?: string;
   description: string;
   openInNewTab: boolean;
   delayRedirectMs: number;
@@ -18,5 +20,6 @@ export interface Preset {
   videoUrl: string;
   redirectUrl: string;
   thumbnailUrl: string;
+  mediaType: 'image' | 'gif' | 'video';
   description: string;
 }
