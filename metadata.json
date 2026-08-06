@@ -1,0 +1,6 @@
+{
+  "name": "Suggested Video Portal",
+  "description": "A video preview portal that opens the target video in a new tab while redirecting the current page to a configured destination link.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
