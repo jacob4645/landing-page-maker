@@ -43,8 +43,10 @@ async function startServer() {
   // API Endpoint to list all hosted files stored in the script folders
   app.get("/api/media", (req, res) => {
     try {
-      const host = req.get("host") || "localhost:3000";
-      const protocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
+      const rawHost = req.headers["x-forwarded-host"] || req.get("host") || "localhost:3000";
+      const host = Array.isArray(rawHost) ? rawHost[0] : rawHost;
+      const rawProtocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
+      const protocol = Array.isArray(rawProtocol) ? rawProtocol[0] : rawProtocol;
       const baseUrl = `${protocol}://${host}`;
 
       const getFilesFromDir = (dir: string, route: string) => {
@@ -53,8 +55,9 @@ async function startServer() {
           const stats = fs.statSync(path.join(dir, file));
           return {
             fileName: file,
-            path: `${route}/${file}`,
-            url: `${baseUrl}/${route}/${file}`,
+            path: `/${route}/${file}`,
+            url: `/${route}/${file}`,
+            fullUrl: `${baseUrl}/${route}/${file}`,
             size: stats.size,
             createdAt: stats.birthtime,
           };
@@ -71,6 +74,37 @@ async function startServer() {
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || "Failed to list media files" });
+    }
+  });
+
+  // API Endpoint to delete a file from server storage
+  app.delete("/api/media/:fileName", (req, res) => {
+    try {
+      const fileName = req.params.fileName;
+      if (!fileName || fileName.includes("..") || fileName.includes("/")) {
+        return res.status(400).json({ error: "Invalid file name" });
+      }
+
+      const uploadPath = path.join(uploadsDir, fileName);
+      const mediaPath = path.join(mediaDir, fileName);
+
+      let deleted = false;
+      if (fs.existsSync(uploadPath)) {
+        fs.unlinkSync(uploadPath);
+        deleted = true;
+      }
+      if (fs.existsSync(mediaPath)) {
+        fs.unlinkSync(mediaPath);
+        deleted = true;
+      }
+
+      if (deleted) {
+        return res.json({ success: true, message: "File deleted successfully" });
+      } else {
+        return res.status(404).json({ error: "File not found" });
+      }
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || "Failed to delete file" });
     }
   });
 
@@ -103,10 +137,14 @@ async function startServer() {
       fs.writeFileSync(mediaPath, buffer);
 
       // Determine host protocol and origin
-      const host = req.get("host") || "localhost:3000";
-      const protocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
-      const hostedUrl = `${protocol}://${host}/uploads/${finalFileName}`;
-      const mediaUrl = `${protocol}://${host}/media/${finalFileName}`;
+      const rawHost = req.headers["x-forwarded-host"] || req.get("host") || "localhost:3000";
+      const host = Array.isArray(rawHost) ? rawHost[0] : rawHost;
+      const rawProtocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
+      const protocol = Array.isArray(rawProtocol) ? rawProtocol[0] : rawProtocol;
+      
+      const relativePath = `/uploads/${finalFileName}`;
+      const mediaRelativePath = `/media/${finalFileName}`;
+      const fullHostedUrl = `${protocol}://${host}${relativePath}`;
 
       console.log(`[Storage] Saved hosted media to script folders:`);
       console.log(` - ${uploadPath}`);
@@ -115,8 +153,9 @@ async function startServer() {
       return res.json({
         success: true,
         fileName: finalFileName,
-        hostedUrl,
-        mediaUrl,
+        hostedUrl: relativePath, // Relative URL works everywhere without localhost issues
+        fullHostedUrl,
+        mediaUrl: mediaRelativePath,
         relativePath: `media/${finalFileName}`,
         size: buffer.length,
         mimeType: mimeType || "application/octet-stream",

@@ -35,6 +35,18 @@ export async function fetchStoredMediaList(): Promise<{ uploads: StoredMediaFile
   }
 }
 
+export async function deleteStoredMediaFile(fileName: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/media/${encodeURIComponent(fileName)}`, {
+      method: 'DELETE',
+    });
+    return res.ok;
+  } catch (err) {
+    console.error('Failed to delete media file:', err);
+    return false;
+  }
+}
+
 export async function uploadMediaToServer(
   fileDataUrl: string,
   fileName: string,

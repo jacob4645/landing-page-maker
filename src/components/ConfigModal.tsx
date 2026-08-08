@@ -1,9 +1,9 @@
-import React, { useState, useRef } from 'react';
-import { X, Save, RefreshCw, Sparkles, Link2, ExternalLink, ArrowRightLeft, Image as ImageIcon, Type, FileText, Upload, Film, FileImage, Check, Trash2, Eraser, RotateCcw, Zap, Info, Globe, Server, Copy } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { X, Save, RefreshCw, Sparkles, Link2, ExternalLink, ArrowRightLeft, Image as ImageIcon, Type, FileText, Upload, Film, FileImage, Check, Trash2, Eraser, RotateCcw, Zap, Info, Globe, Server, Copy, HardDrive, Eye } from 'lucide-react';
 import { VideoConfig, Preset } from '../types';
 import { PRESETS, BLANK_CONFIG, DEFAULT_CONFIG } from '../data/presets';
 import { compressImageFile } from '../utils/imageCompressor';
-import { uploadMediaToServer } from '../utils/uploadService';
+import { uploadMediaToServer, fetchStoredMediaList, deleteStoredMediaFile, StoredMediaFile } from '../utils/uploadService';
 
 interface ConfigModalProps {
   isOpen: boolean;
@@ -21,7 +21,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
   onTestWatch,
 }) => {
   const [formData, setFormData] = useState<VideoConfig>({ ...config });
-  const [activeTab, setActiveTab] = useState<'urls' | 'meta' | 'presets'>('urls');
+  const [activeTab, setActiveTab] = useState<'urls' | 'meta' | 'server_media' | 'presets'>('urls');
   const [uploadMode, setUploadMode] = useState<'url' | 'file'>('file');
   const [fileName, setFileName] = useState<string>('');
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -30,7 +30,37 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
     originalSize: string;
     savedRatio: string;
   } | null>(null);
+
+  // Server Media Manager state
+  const [storedMediaList, setStoredMediaList] = useState<StoredMediaFile[]>([]);
+  const [isLoadingMediaList, setIsLoadingMediaList] = useState<boolean>(false);
+  const [selectedFileSuccess, setSelectedFileSuccess] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const loadServerMediaList = async () => {
+    setIsLoadingMediaList(true);
+    try {
+      const list = await fetchStoredMediaList();
+      // Combine uploads and media avoiding duplicates
+      const map = new Map<string, StoredMediaFile>();
+      (list.uploads || []).forEach(f => map.set(f.fileName, f));
+      (list.media || []).forEach(f => {
+        if (!map.has(f.fileName)) map.set(f.fileName, f);
+      });
+      setStoredMediaList(Array.from(map.values()));
+    } catch (err) {
+      console.error('Error fetching server media list:', err);
+    } finally {
+      setIsLoadingMediaList(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      loadServerMediaList();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -90,8 +120,8 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
       let finalUrl = `media/${cleanName}`;
       try {
         const uploadRes = await uploadMediaToServer(res.dataUrl, cleanName, file.type);
-        if (uploadRes && uploadRes.hostedUrl) {
-          finalUrl = uploadRes.hostedUrl;
+        if (uploadRes && (uploadRes.hostedUrl || uploadRes.mediaUrl)) {
+          finalUrl = uploadRes.hostedUrl || uploadRes.mediaUrl || `/uploads/${uploadRes.fileName}`;
         }
       } catch (uploadErr) {
         console.warn('Server upload fallback to local preview buffer', uploadErr);
@@ -99,7 +129,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
 
       setFormData((prev) => ({
         ...prev,
-        thumbnailUrl: finalUrl, // Direct Hosted URL on this website host!
+        thumbnailUrl: finalUrl, // Direct Relative Hosted URL on server
         rawMediaDataUrl: res.dataUrl, // Buffer for offline/local fallback
         mediaFolder: 'media',
         mediaFileName: cleanName,
@@ -111,10 +141,47 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
         originalSize: res.originalSizeFormatted,
         savedRatio: res.compressionRatio,
       });
+
+      // Refresh server media list
+      await loadServerMediaList();
     } catch (err) {
       alert('حدث خطأ أثناء رفع وتحليل الملف. يرجى محاولة ملف آخر.');
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleSelectServerFile = (file: StoredMediaFile) => {
+    let detectedType: 'image' | 'gif' | 'video' = 'image';
+    const lowerName = file.fileName.toLowerCase();
+    if (lowerName.endsWith('.mp4') || lowerName.endsWith('.webm')) {
+      detectedType = 'video';
+    } else if (lowerName.endsWith('.gif')) {
+      detectedType = 'gif';
+    } else {
+      detectedType = 'image';
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      thumbnailUrl: file.path, // relative path e.g. /uploads/123_foxy.png
+      rawMediaDataUrl: '',
+      mediaFileName: file.fileName,
+      mediaType: detectedType,
+    }));
+
+    setSelectedFileSuccess(file.fileName);
+    setTimeout(() => setSelectedFileSuccess(null), 3000);
+  };
+
+  const handleDeleteServerFile = async (fileNameToDelete: string) => {
+    if (!confirm(`هل أنت تأكد من حذف الملف (${fileNameToDelete}) من سيرفر الموقع؟`)) return;
+
+    const ok = await deleteStoredMediaFile(fileNameToDelete);
+    if (ok) {
+      await loadServerMediaList();
+    } else {
+      alert('تعذر حذف الملف من السيرفر.');
     }
   };
 
@@ -147,11 +214,11 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-[#2a2e2a] bg-[#0d0f0d]/50 px-6 pt-2">
+        <div className="flex flex-wrap border-b border-[#2a2e2a] bg-[#0d0f0d]/50 px-6 pt-2 gap-1">
           <button
             type="button"
             onClick={() => setActiveTab('urls')}
-            className={`px-4 py-2.5 text-xs font-bold rounded-t-lg transition-all cursor-pointer flex items-center gap-2 border-b-2 ${
+            className={`px-3 py-2 text-xs font-bold rounded-t-lg transition-all cursor-pointer flex items-center gap-1.5 border-b-2 ${
               activeTab === 'urls'
                 ? 'border-[#2ecc71] text-[#2ecc71] bg-[#161916]'
                 : 'border-transparent text-[#a0a8a0] hover:text-[#eaeaea]'
@@ -160,22 +227,40 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
             <Link2 className="w-4 h-4" />
             <span>الروابط والتوجيه</span>
           </button>
+
           <button
             type="button"
             onClick={() => setActiveTab('meta')}
-            className={`px-4 py-2.5 text-xs font-bold rounded-t-lg transition-all cursor-pointer flex items-center gap-2 border-b-2 ${
+            className={`px-3 py-2 text-xs font-bold rounded-t-lg transition-all cursor-pointer flex items-center gap-1.5 border-b-2 ${
               activeTab === 'meta'
                 ? 'border-[#2ecc71] text-[#2ecc71] bg-[#161916]'
                 : 'border-transparent text-[#a0a8a0] hover:text-[#eaeaea]'
             }`}
           >
-            <ImageIcon className="w-4 h-4" />
-            <span>رفع الصورة / الفيديو / GIF</span>
+            <Upload className="w-4 h-4" />
+            <span>رفع ملف جديد</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('server_media');
+              loadServerMediaList();
+            }}
+            className={`px-3 py-2 text-xs font-bold rounded-t-lg transition-all cursor-pointer flex items-center gap-1.5 border-b-2 ${
+              activeTab === 'server_media'
+                ? 'border-[#2ecc71] text-[#2ecc71] bg-[#161916]'
+                : 'border-transparent text-[#a0a8a0] hover:text-[#eaeaea]'
+            }`}
+          >
+            <HardDrive className="w-4 h-4" />
+            <span>مكتبة السيرفر ({storedMediaList.length})</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setActiveTab('presets')}
-            className={`px-4 py-2.5 text-xs font-bold rounded-t-lg transition-all cursor-pointer flex items-center gap-2 border-b-2 ${
+            className={`px-3 py-2 text-xs font-bold rounded-t-lg transition-all cursor-pointer flex items-center gap-1.5 border-b-2 ${
               activeTab === 'presets'
                 ? 'border-[#2ecc71] text-[#2ecc71] bg-[#161916]'
                 : 'border-transparent text-[#a0a8a0] hover:text-[#eaeaea]'
@@ -364,10 +449,10 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                       </div>
                       <div>
                         <p className="text-xs font-bold text-[#eaeaea]">
-                          اضغط هنا لاختيار صورة، GIF، أو ملف فيديو من جهازك
+                          {isUploading ? 'جاري رفع الملف وحفظه في السيرفر...' : 'اضغط هنا لاختيار صورة، GIF، أو ملف فيديو من جهازك'}
                         </p>
                         <p className="text-[11px] text-[#a0a8a0] mt-1">
-                          يدعم صيغ MP4, WEBM, GIF, PNG, JPG, WEBP (يتم تحويل الملف تلقائياً ليكون مدمجاً جاهزاً للتصدير)
+                          يتم رفع الملف مباشرة إلى مجلدات السيرفر (/uploads & /media) ليكون متاحاً ومستضافاً فوراً
                         </p>
                       </div>
                     </div>
@@ -384,12 +469,12 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                           </span>
                         </div>
 
-                        {formData.thumbnailUrl.includes('/uploads/') && (
+                        {formData.thumbnailUrl && (
                           <div className="p-3 bg-[#2ecc71]/10 border border-[#2ecc71]/40 rounded-xl space-y-2">
                             <div className="flex items-center justify-between text-xs text-[#2ecc71]">
                               <span className="font-bold flex items-center gap-1.5">
                                 <Server className="w-4 h-4 shrink-0" />
-                                <span>تم رفع الملف واستضافته بنجاح على هذا الموقع (Server Hosted)</span>
+                                <span>تم رفع الملف ومستضاف بنجاح على سيرفر الموقع</span>
                               </span>
                               <span className="text-[10px] bg-[#2ecc71] text-[#0d0f0d] font-bold px-2 py-0.5 rounded">
                                 مباشر LIVE
@@ -419,8 +504,8 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                           <div className="p-2.5 bg-[#161916] border border-[#2a2e2a] rounded-lg text-xs text-[#a0a8a0] flex items-center gap-2">
                             <Zap className="w-4 h-4 shrink-0 text-[#2ecc71]" />
                             <div className="flex-1 text-[11px] leading-relaxed">
-                              <span className="font-bold text-[#2ecc71]">تم ضغط وسائط الملف: </span>
-                              <span>من {uploadStats.originalSize} إلى <b>{uploadStats.size}</b> (وفرت {uploadStats.savedRatio} من الحجم الأصلي!)</span>
+                              <span className="font-bold text-[#2ecc71]">حجم الملف: </span>
+                              <span><b>{uploadStats.size}</b></span>
                             </div>
                           </div>
                         )}
@@ -436,59 +521,36 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                           مسار مجلد نسبي قصير
                         </span>
                       )}
-                      {formData.thumbnailUrl.startsWith('data:') && (
-                        <span className="text-[10px] text-amber-400 font-semibold bg-amber-400/10 px-2 py-0.5 rounded">
-                          ملف مدمج (Base64)
-                        </span>
-                      )}
                     </div>
 
                     <input
                       type="text"
                       value={formData.thumbnailUrl}
                       onChange={(e) => handleChange('thumbnailUrl', e.target.value)}
-                      placeholder="media/video.mp4 أو https://..."
+                      placeholder="/uploads/file.png أو media/video.mp4"
                       className="w-full px-3.5 py-2.5 bg-[#161916] border border-[#2a2e2a] focus:border-[#2ecc71] rounded-xl text-xs text-[#eaeaea] dir-ltr text-right focus:outline-none transition-all font-mono"
                     />
-
-                    {/* Quick Short Relative Path Shortcuts */}
-                    <div className="space-y-1.5 pt-1">
-                      <span className="text-[11px] text-[#a0a8a0] block font-bold">اختصارات الروابط القصيرة (Short Media Paths):</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleChange('thumbnailUrl', 'media/video.mp4');
-                            handleChange('mediaType', 'video');
-                          }}
-                          className="px-2.5 py-1 bg-[#161916] hover:bg-[#2ecc71]/15 border border-[#2a2e2a] hover:border-[#2ecc71] text-[11px] text-[#eaeaea] rounded-lg font-mono transition-all cursor-pointer dir-ltr"
-                        >
-                          media/video.mp4
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleChange('thumbnailUrl', 'media/thumbnail.jpg');
-                            handleChange('mediaType', 'image');
-                          }}
-                          className="px-2.5 py-1 bg-[#161916] hover:bg-[#2ecc71]/15 border border-[#2a2e2a] hover:border-[#2ecc71] text-[11px] text-[#eaeaea] rounded-lg font-mono transition-all cursor-pointer dir-ltr"
-                        >
-                          media/thumbnail.jpg
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleChange('thumbnailUrl', 'media/animation.gif');
-                            handleChange('mediaType', 'gif');
-                          }}
-                          className="px-2.5 py-1 bg-[#161916] hover:bg-[#2ecc71]/15 border border-[#2a2e2a] hover:border-[#2ecc71] text-[11px] text-[#eaeaea] rounded-lg font-mono transition-all cursor-pointer dir-ltr"
-                        >
-                          media/animation.gif
-                        </button>
-                      </div>
-                    </div>
                   </div>
                 )}
+              </div>
+
+              {/* Link to Server Media Gallery */}
+              <div className="p-3 bg-[#0d0f0d] border border-[#2a2e2a] rounded-xl flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs text-[#a0a8a0]">
+                  <HardDrive className="w-4 h-4 text-[#2ecc71]" />
+                  <span>تصفح وتحديد من ملفات السيرفر المرفوعة سابقاً ({storedMediaList.length} ملف)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('server_media');
+                    loadServerMediaList();
+                  }}
+                  className="px-3 py-1.5 bg-[#2ecc71]/10 hover:bg-[#2ecc71]/20 border border-[#2ecc71]/30 text-[#2ecc71] text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>فتح المكتبة</span>
+                </button>
               </div>
 
               {/* Site Name & Video Title */}
@@ -527,6 +589,148 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                   className="w-full px-3.5 py-2 bg-[#0d0f0d] border border-[#2a2e2a] focus:border-[#2ecc71] rounded-xl text-xs text-[#eaeaea] focus:outline-none transition-all resize-none"
                 />
               </div>
+            </div>
+          )}
+
+          {/* SERVER MEDIA GALLERY TAB */}
+          {activeTab === 'server_media' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-[#0d0f0d] border border-[#2a2e2a] rounded-xl">
+                <div className="flex items-center gap-2 text-xs font-bold text-[#2ecc71]">
+                  <HardDrive className="w-4 h-4" />
+                  <span>ملفات الوسائط المرفوعة والمستضافة بالسيرفر ({storedMediaList.length})</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadServerMediaList}
+                  disabled={isLoadingMediaList}
+                  className="px-2.5 py-1 bg-[#2a2e2a] hover:bg-[#2a2e2a]/80 text-[#eaeaea] text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-[#2ecc71] ${isLoadingMediaList ? 'animate-spin' : ''}`} />
+                  <span>تحديث القائمة</span>
+                </button>
+              </div>
+
+              {selectedFileSuccess && (
+                <div className="p-3 bg-[#2ecc71]/20 border border-[#2ecc71] text-[#2ecc71] text-xs font-bold rounded-xl flex items-center gap-2">
+                  <Check className="w-4 h-4" />
+                  <span>تم تحديد وتطبيق الملف ({selectedFileSuccess}) بنجاح للمعاينة!</span>
+                </div>
+              )}
+
+              {isLoadingMediaList ? (
+                <div className="p-8 text-center space-y-2">
+                  <RefreshCw className="w-6 h-6 animate-spin text-[#2ecc71] mx-auto" />
+                  <p className="text-xs text-[#a0a8a0]">جاري تحميل ملفات السيرفر...</p>
+                </div>
+              ) : storedMediaList.length === 0 ? (
+                <div className="p-8 border-2 border-dashed border-[#2a2e2a] rounded-xl text-center space-y-3 bg-[#0d0f0d]/50">
+                  <Server className="w-10 h-10 text-[#a0a8a0] mx-auto opacity-50" />
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-[#eaeaea]">لا توجد ملفات مرفوعة بالسيرفر حالياً</p>
+                    <p className="text-[11px] text-[#a0a8a0]">
+                      يمكنك رفع الصور، الصور المتحركة، أو الفيديوهات من تبويب (رفع ملف جديد) وتظهر هنا مباشرة.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('meta')}
+                    className="px-4 py-2 bg-[#2ecc71] text-[#0d0f0d] text-xs font-bold rounded-xl hover:bg-[#1e9e57] transition-all cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>رفع ملف الآن</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {storedMediaList.map((file) => {
+                    const isVideo = file.fileName.toLowerCase().endsWith('.mp4') || file.fileName.toLowerCase().endsWith('.webm');
+                    const isSelected = formData.thumbnailUrl === file.path || formData.thumbnailUrl === file.url;
+
+                    return (
+                      <div
+                        key={file.fileName}
+                        className={`bg-[#0d0f0d] border rounded-xl overflow-hidden flex flex-col justify-between transition-all ${
+                          isSelected ? 'border-[#2ecc71] shadow-lg shadow-[#2ecc71]/20' : 'border-[#2a2e2a] hover:border-[#2ecc71]/50'
+                        }`}
+                      >
+                        {/* Preview */}
+                        <div className="relative w-full h-28 bg-black flex items-center justify-center overflow-hidden">
+                          {isVideo ? (
+                            <video
+                              src={file.path}
+                              controls
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <img
+                              src={file.path}
+                              alt={file.fileName}
+                              className="w-full h-full object-cover"
+                            />
+                          )}
+                          {isSelected && (
+                            <div className="absolute top-2 right-2 px-2 py-0.5 rounded bg-[#2ecc71] text-[#0d0f0d] text-[10px] font-bold flex items-center gap-1">
+                              <Check className="w-3 h-3" />
+                              <span>محدد حالياً</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* File details */}
+                        <div className="p-3 space-y-2 flex-1 flex flex-col justify-between">
+                          <div className="space-y-1">
+                            <p className="text-xs font-bold text-[#eaeaea] truncate dir-ltr text-right" title={file.fileName}>
+                              {file.fileName}
+                            </p>
+                            <div className="flex items-center justify-between text-[10px] text-[#a0a8a0]">
+                              <code className="text-[#2ecc71] font-mono">{file.path}</code>
+                              <span>{(file.size / 1024).toFixed(1)} KB</span>
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex items-center gap-1.5 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => handleSelectServerFile(file)}
+                              className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                isSelected
+                                  ? 'bg-[#2ecc71] text-[#0d0f0d]'
+                                  : 'bg-[#2ecc71]/15 hover:bg-[#2ecc71]/30 text-[#2ecc71]'
+                              }`}
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>{isSelected ? 'محدد' : 'تحديد'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(`${window.location.origin}${file.path}`);
+                                alert('تم نسخ رابط الملف إلى الحافظة!');
+                              }}
+                              className="p-1.5 bg-[#2a2e2a] hover:bg-[#2a2e2a]/80 text-[#eaeaea] rounded-lg text-xs transition-all cursor-pointer"
+                              title="نسخ الرابط"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteServerFile(file.fileName)}
+                              className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg text-xs transition-all cursor-pointer"
+                              title="حذف الملف من السيرفر"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -624,3 +828,4 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
     </div>
   );
 };
+
