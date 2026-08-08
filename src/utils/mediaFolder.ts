@@ -1,3 +1,5 @@
+import JSZip from 'jszip';
+
 /**
  * Utility for handling relative media folder storage (e.g. media/video.mp4, media/thumb.jpg)
  */
@@ -50,4 +52,43 @@ export function downloadDataUrlAsFile(dataUrl: string, fileName: string) {
   } catch (e) {
     console.error('Failed to convert base64 to blob for download', e);
   }
+}
+
+/**
+ * Creates a structured ZIP archive containing index.html and media/ folder with uploaded assets
+ */
+export async function exportProjectAsZip(
+  htmlContent: string,
+  mediaDataUrl?: string,
+  mediaFileName: string = 'video.mp4',
+  mediaFolderName: string = 'media'
+): Promise<void> {
+  const zip = new JSZip();
+
+  // 1. Add index.html at root
+  zip.file('index.html', htmlContent);
+
+  // 2. Add media/ folder file if dataUrl is available
+  if (mediaDataUrl && mediaDataUrl.startsWith('data:')) {
+    try {
+      const arr = mediaDataUrl.split(',');
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      
+      const mediaFolder = zip.folder(mediaFolderName);
+      if (mediaFolder) {
+        mediaFolder.file(mediaFileName, u8arr);
+      }
+    } catch (err) {
+      console.error('Error adding media file to ZIP:', err);
+    }
+  }
+
+  // 3. Generate ZIP blob and download
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  downloadBlob(zipBlob, 'redirect-landing-page.zip');
 }

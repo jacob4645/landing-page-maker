@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { X, Download, Copy, Check, FileCode, Code2, Sparkles, Folder, FolderPlus, Link as LinkIcon, Film, Image as ImageIcon, Zap, Info, Layers, Server, Globe } from 'lucide-react';
+import { X, Download, Copy, Check, FileCode, Code2, Sparkles, Folder, FolderPlus, Link as LinkIcon, Film, Image as ImageIcon, Zap, Info, Layers, Server, Globe, FileArchive } from 'lucide-react';
 import { VideoConfig } from '../types';
 import { generateStandaloneHtml } from '../utils/generateHtml';
-import { downloadDataUrlAsFile } from '../utils/mediaFolder';
+import { downloadDataUrlAsFile, exportProjectAsZip } from '../utils/mediaFolder';
 import { uploadMediaToServer } from '../utils/uploadService';
 
 interface ExportModalProps {
@@ -21,6 +21,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'download' | 'code'>('download');
   const [isHosting, setIsHosting] = useState(false);
+  const [isZipping, setIsZipping] = useState(false);
 
   if (!isOpen) return null;
 
@@ -46,6 +47,21 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadZip = async () => {
+    setIsZipping(true);
+    try {
+      const rawData = config.rawMediaDataUrl || (config.thumbnailUrl.startsWith('data:') ? config.thumbnailUrl : '');
+      const cleanFileName = config.mediaFileName || (config.mediaType === 'video' ? 'video.mp4' : config.mediaType === 'gif' ? 'animation.gif' : 'thumbnail.jpg');
+      
+      await exportProjectAsZip(htmlCode, rawData, cleanFileName, 'media');
+    } catch (err) {
+      console.error('Failed to create ZIP export:', err);
+      alert('حدث خطأ أثناء حزم الملفات في ZIP. يمكنك تنزيل ملف index.html والملف بشكل منفصل.');
+    } finally {
+      setIsZipping(false);
+    }
   };
 
   const handleDownloadMediaAsset = () => {
@@ -267,16 +283,27 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                         <Info className="w-3.5 h-3.5" />
                         <span>هيكلية مجلد المشروع المطلوب وضعها في الاستضافة:</span>
                       </span>
-                      {config.rawMediaDataUrl && (
+                      <div className="flex items-center gap-1.5">
                         <button
                           type="button"
-                          onClick={handleDownloadMediaAsset}
+                          onClick={handleDownloadZip}
+                          disabled={isZipping}
                           className="px-2.5 py-1 bg-[#2ecc71] hover:bg-[#1e9e57] text-[#0d0f0d] text-[11px] font-bold rounded-md transition-all cursor-pointer flex items-center gap-1"
                         >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>تنزيل ملف الميديا المرفق</span>
+                          <FileArchive className="w-3.5 h-3.5" />
+                          <span>تحميل حزمة ZIP كاملة</span>
                         </button>
-                      )}
+                        {config.rawMediaDataUrl && (
+                          <button
+                            type="button"
+                            onClick={handleDownloadMediaAsset}
+                            className="px-2 py-1 bg-[#2a2e2a] hover:bg-[#2a2e2a]/80 text-[#eaeaea] text-[11px] font-bold rounded-md transition-all cursor-pointer flex items-center gap-1"
+                          >
+                            <Download className="w-3.5 h-3.5 text-[#2ecc71]" />
+                            <span>الملف المرفق</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <pre className="p-2.5 bg-[#0d0f0d] rounded text-[11px] font-mono text-emerald-300 dir-ltr text-left">
@@ -397,7 +424,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             <span>{copied ? 'تم النسخ بنجاح!' : 'نسخ الكود'}</span>
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={onClose}
               className="px-4 py-2.5 bg-[#2a2e2a]/60 hover:bg-[#2a2e2a] text-[#a0a8a0] text-xs font-bold rounded-xl transition-all cursor-pointer"
@@ -407,10 +434,21 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
             <button
               onClick={handleDownloadFile}
-              className="px-6 py-2.5 bg-[#2ecc71] hover:bg-[#1e9e57] text-[#0d0f0d] text-xs font-bold rounded-xl transition-all shadow-lg shadow-[#2ecc71]/20 cursor-pointer flex items-center gap-2"
+              className="px-4 py-2.5 bg-[#2a2e2a] hover:bg-[#2a2e2a]/80 text-[#eaeaea] text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 border border-[#2a2e2a]"
+              title="تحميل ملف index.html فقط"
             >
-              <Download className="w-4 h-4" />
-              <span>تحميل index.html</span>
+              <FileCode className="w-4 h-4 text-[#2ecc71]" />
+              <span>index.html فقط</span>
+            </button>
+
+            <button
+              onClick={handleDownloadZip}
+              disabled={isZipping}
+              className="px-5 py-2.5 bg-[#2ecc71] hover:bg-[#1e9e57] text-[#0d0f0d] text-xs font-bold rounded-xl transition-all shadow-lg shadow-[#2ecc71]/20 cursor-pointer flex items-center gap-2 disabled:opacity-50"
+              title="تنزيل حزمة مضغوطة تحتوي على index.html ومجلد media مع كافة الوسائط"
+            >
+              <FileArchive className="w-4 h-4" />
+              <span>{isZipping ? 'جاري تجهيز الـ ZIP...' : 'تحميل حزمة المشروع (ZIP مع مجلد media)'}</span>
             </button>
           </div>
         </div>
