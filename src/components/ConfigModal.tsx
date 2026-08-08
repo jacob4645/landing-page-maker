@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { X, Save, RefreshCw, Sparkles, Link2, ExternalLink, ArrowRightLeft, Image as ImageIcon, Type, FileText, Upload, Film, FileImage, Check, Trash2, Eraser, RotateCcw, Zap, Info } from 'lucide-react';
+import { X, Save, RefreshCw, Sparkles, Link2, ExternalLink, ArrowRightLeft, Image as ImageIcon, Type, FileText, Upload, Film, FileImage, Check, Trash2, Eraser, RotateCcw, Zap, Info, Globe, Server, Copy } from 'lucide-react';
 import { VideoConfig, Preset } from '../types';
 import { PRESETS, BLANK_CONFIG, DEFAULT_CONFIG } from '../data/presets';
 import { compressImageFile } from '../utils/imageCompressor';
+import { uploadMediaToServer } from '../utils/uploadService';
 
 interface ConfigModalProps {
   isOpen: boolean;
@@ -84,12 +85,22 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
       }
 
       const cleanName = file.name.toLowerCase().replace(/[^a-z0-9_.-]/g, '_');
-      const relativePath = `media/${cleanName}`;
+
+      // Attempt uploading to server host storage (/api/upload -> /uploads/filename)
+      let finalUrl = `media/${cleanName}`;
+      try {
+        const uploadRes = await uploadMediaToServer(res.dataUrl, cleanName, file.type);
+        if (uploadRes && uploadRes.hostedUrl) {
+          finalUrl = uploadRes.hostedUrl;
+        }
+      } catch (uploadErr) {
+        console.warn('Server upload fallback to local preview buffer', uploadErr);
+      }
 
       setFormData((prev) => ({
         ...prev,
-        thumbnailUrl: relativePath, // Short clean path for the script!
-        rawMediaDataUrl: res.dataUrl, // Buffer for live web app preview
+        thumbnailUrl: finalUrl, // Direct Hosted URL on this website host!
+        rawMediaDataUrl: res.dataUrl, // Buffer for offline/local fallback
         mediaFolder: 'media',
         mediaFileName: cleanName,
         mediaType: detectedType,
@@ -373,12 +384,43 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                           </span>
                         </div>
 
+                        {formData.thumbnailUrl.includes('/uploads/') && (
+                          <div className="p-3 bg-[#2ecc71]/10 border border-[#2ecc71]/40 rounded-xl space-y-2">
+                            <div className="flex items-center justify-between text-xs text-[#2ecc71]">
+                              <span className="font-bold flex items-center gap-1.5">
+                                <Server className="w-4 h-4 shrink-0" />
+                                <span>تم رفع الملف واستضافته بنجاح على هذا الموقع (Server Hosted)</span>
+                              </span>
+                              <span className="text-[10px] bg-[#2ecc71] text-[#0d0f0d] font-bold px-2 py-0.5 rounded">
+                                مباشر LIVE
+                              </span>
+                            </div>
+                            <div className="p-2 bg-[#0d0f0d] border border-[#2a2e2a] rounded-lg flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-mono text-emerald-300 truncate dir-ltr text-left flex-1">
+                                {formData.thumbnailUrl}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(formData.thumbnailUrl);
+                                  alert('تم نسخ رابط الاستضافة المباشر إلى الحافظة!');
+                                }}
+                                className="p-1.5 bg-[#2ecc71]/20 hover:bg-[#2ecc71]/30 text-[#2ecc71] rounded text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                                title="نسخ رابط الاستضافة المباشر"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                                <span className="text-[10px]">نسخ الرابط</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
                         {uploadStats && (
-                          <div className="p-2.5 bg-[#2ecc71]/10 border border-[#2ecc71]/30 rounded-lg text-xs text-[#2ecc71] flex items-center gap-2">
+                          <div className="p-2.5 bg-[#161916] border border-[#2a2e2a] rounded-lg text-xs text-[#a0a8a0] flex items-center gap-2">
                             <Zap className="w-4 h-4 shrink-0 text-[#2ecc71]" />
                             <div className="flex-1 text-[11px] leading-relaxed">
-                              <span className="font-bold">تم ضغط الصورة ذكياً: </span>
-                              <span>من {uploadStats.originalSize} إلى <b>{uploadStats.size}</b> (وفرت {uploadStats.savedRatio} من الحجم!)</span>
+                              <span className="font-bold text-[#2ecc71]">تم ضغط وسائط الملف: </span>
+                              <span>من {uploadStats.originalSize} إلى <b>{uploadStats.size}</b> (وفرت {uploadStats.savedRatio} من الحجم الأصلي!)</span>
                             </div>
                           </div>
                         )}

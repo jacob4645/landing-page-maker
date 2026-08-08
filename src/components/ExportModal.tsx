@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { X, Download, Copy, Check, FileCode, Code2, Sparkles, Folder, FolderPlus, Link as LinkIcon, Film, Image as ImageIcon, Zap, Info, Layers } from 'lucide-react';
+import { X, Download, Copy, Check, FileCode, Code2, Sparkles, Folder, FolderPlus, Link as LinkIcon, Film, Image as ImageIcon, Zap, Info, Layers, Server, Globe } from 'lucide-react';
 import { VideoConfig } from '../types';
 import { generateStandaloneHtml } from '../utils/generateHtml';
 import { downloadDataUrlAsFile } from '../utils/mediaFolder';
+import { uploadMediaToServer } from '../utils/uploadService';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -19,6 +20,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'download' | 'code'>('download');
+  const [isHosting, setIsHosting] = useState(false);
 
   if (!isOpen) return null;
 
@@ -59,6 +61,55 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
 
     downloadDataUrlAsFile(rawData, defaultName);
+  };
+
+  const handleSetHostedMode = async () => {
+    const origin = window.location.origin;
+    const cleanName = config.mediaFileName || (config.mediaType === 'video' ? 'video.mp4' : config.mediaType === 'gif' ? 'animation.gif' : 'thumbnail.jpg');
+
+    // If it's already an upload URL hosted on the server
+    if (config.thumbnailUrl.includes('/uploads/')) {
+      if (!config.thumbnailUrl.startsWith('http')) {
+        onUpdateConfig({
+          ...config,
+          thumbnailUrl: `${origin}${config.thumbnailUrl.startsWith('/') ? '' : '/'}${config.thumbnailUrl}`,
+        });
+      }
+      return;
+    }
+
+    const rawData = config.rawMediaDataUrl || (config.thumbnailUrl.startsWith('data:') ? config.thumbnailUrl : '');
+
+    if (rawData) {
+      setIsHosting(true);
+      try {
+        const mimeType = config.mediaType === 'video' ? 'video/mp4' : config.mediaType === 'gif' ? 'image/gif' : 'image/jpeg';
+        const res = await uploadMediaToServer(rawData, cleanName, mimeType);
+        if (res && res.hostedUrl) {
+          onUpdateConfig({
+            ...config,
+            thumbnailUrl: res.hostedUrl,
+          });
+        }
+      } catch (err) {
+        // Fallback to absolute URL
+        onUpdateConfig({
+          ...config,
+          thumbnailUrl: `${origin}/uploads/${cleanName}`,
+        });
+      } finally {
+        setIsHosting(false);
+      }
+    } else if (config.thumbnailUrl.startsWith('http://') || config.thumbnailUrl.startsWith('https://')) {
+      // External link, keep as is
+      return;
+    } else {
+      // Short path like media/video.mp4
+      onUpdateConfig({
+        ...config,
+        thumbnailUrl: `${origin}/uploads/${cleanName}`,
+      });
+    }
   };
 
   const handleSetShortPathMode = () => {
@@ -150,7 +201,26 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={handleSetHostedMode}
+                    disabled={isHosting}
+                    className={`p-3 rounded-xl border text-right transition-all cursor-pointer space-y-1 ${
+                      config.thumbnailUrl.includes('/uploads/') || config.thumbnailUrl.startsWith('http')
+                        ? 'bg-[#2ecc71]/15 border-[#2ecc71] text-[#eaeaea]'
+                        : 'bg-[#161916] border-[#2a2e2a] text-[#a0a8a0] hover:border-[#2ecc71]/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 text-xs font-bold text-[#2ecc71]">
+                      <Server className="w-4 h-4" />
+                      <span>{isHosting ? 'جاري الرفع والاستضافة...' : 'رابط استضافة الموقع المباشر'}</span>
+                    </div>
+                    <p className="text-[11px] text-[#a0a8a0] leading-relaxed">
+                      رابط مباشر مستضاف على سيرفر الموقع جاهز للاستخدام الفوري
+                    </p>
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleSetShortPathMode}
@@ -162,10 +232,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   >
                     <div className="flex items-center gap-2 text-xs font-bold text-[#2ecc71]">
                       <FolderPlus className="w-4 h-4" />
-                      <span>مسار مجلد نسبي قصير (موصى به)</span>
+                      <span>مسار مجلد نسبي قصير</span>
                     </div>
                     <p className="text-[11px] text-[#a0a8a0] leading-relaxed">
-                      يجعل الرابط في السكريبت قصير ونظيف جداً مثل: <code className="text-emerald-300 font-mono">media/{config.mediaFileName || 'video.mp4'}</code>
+                      مسار نظيف وقصير مثل: <code className="text-emerald-300 font-mono">media/{config.mediaFileName || 'video.mp4'}</code>
                     </p>
                   </button>
 
@@ -181,10 +251,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   >
                     <div className="flex items-center gap-2 text-xs font-bold text-[#2ecc71]">
                       <Zap className="w-4 h-4" />
-                      <span>تضمين مباشر في ملف واحد (Base64)</span>
+                      <span>تضمين ملف واحد (Base64)</span>
                     </div>
                     <p className="text-[11px] text-[#a0a8a0] leading-relaxed">
-                      يُدمج كود الوسائط كاملاً داخل ملف HTML بدون الحاجة لإنشاء مجلد خارجي
+                      دمج الوسائط داخل كود HTML بدون ملفات إضافية
                     </p>
                   </button>
                 </div>
