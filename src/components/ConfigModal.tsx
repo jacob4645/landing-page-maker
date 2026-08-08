@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { X, Save, RefreshCw, Sparkles, Link2, ExternalLink, ArrowRightLeft, Image as ImageIcon, Type, FileText, Upload, Film, FileImage, Check, Trash2, Eraser, RotateCcw } from 'lucide-react';
+import { X, Save, RefreshCw, Sparkles, Link2, ExternalLink, ArrowRightLeft, Image as ImageIcon, Type, FileText, Upload, Film, FileImage, Check, Trash2, Eraser, RotateCcw, Zap, Info } from 'lucide-react';
 import { VideoConfig, Preset } from '../types';
 import { PRESETS, BLANK_CONFIG, DEFAULT_CONFIG } from '../data/presets';
+import { compressImageFile } from '../utils/imageCompressor';
 
 interface ConfigModalProps {
   isOpen: boolean;
@@ -23,6 +24,11 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
   const [uploadMode, setUploadMode] = useState<'url' | 'file'>('file');
   const [fileName, setFileName] = useState<string>('');
   const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [uploadStats, setUploadStats] = useState<{
+    size: string;
+    originalSize: string;
+    savedRatio: string;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -42,53 +48,63 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
       mediaType: preset.mediaType || 'image',
       description: preset.description,
     }));
+    setUploadStats(null);
   };
 
   const handleClearScratch = () => {
     setFormData(BLANK_CONFIG);
     setFileName('');
+    setUploadStats(null);
   };
 
   const handleResetDefaults = () => {
     setFormData(DEFAULT_CONFIG);
     setFileName('');
+    setUploadStats(null);
   };
 
   // Handle local File Upload (Image, GIF, MP4/WebM Video)
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setFileName(file.name);
     setIsUploading(true);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      if (result) {
-        let detectedType: 'image' | 'gif' | 'video' = 'image';
-        if (file.type.startsWith('video/')) {
-          detectedType = 'video';
-        } else if (file.type === 'image/gif' || file.name.endsWith('.gif')) {
-          detectedType = 'gif';
-        } else {
-          detectedType = 'image';
-        }
+    try {
+      const res = await compressImageFile(file, 1000, 0.75);
 
-        setFormData((prev) => ({
-          ...prev,
-          thumbnailUrl: result,
-          mediaType: detectedType,
-        }));
+      let detectedType: 'image' | 'gif' | 'video' = 'image';
+      if (file.type.startsWith('video/')) {
+        detectedType = 'video';
+      } else if (file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif')) {
+        detectedType = 'gif';
+      } else {
+        detectedType = 'image';
       }
-      setIsUploading(false);
-    };
-    reader.onerror = () => {
-      alert('حدث خطأ أثناء قراءة الملف. يرجى تجربة ملف آخر.');
-      setIsUploading(false);
-    };
 
-    reader.readAsDataURL(file);
+      const cleanName = file.name.toLowerCase().replace(/[^a-z0-9_.-]/g, '_');
+      const relativePath = `media/${cleanName}`;
+
+      setFormData((prev) => ({
+        ...prev,
+        thumbnailUrl: relativePath, // Short clean path for the script!
+        rawMediaDataUrl: res.dataUrl, // Buffer for live web app preview
+        mediaFolder: 'media',
+        mediaFileName: cleanName,
+        mediaType: detectedType,
+      }));
+
+      setUploadStats({
+        size: res.sizeFormatted,
+        originalSize: res.originalSizeFormatted,
+        savedRatio: res.compressionRatio,
+      });
+    } catch (err) {
+      alert('حدث خطأ أثناء رفع وتحليل الملف. يرجى محاولة ملف آخر.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -346,27 +362,89 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                     </div>
 
                     {fileName && (
-                      <div className="flex items-center justify-between p-2.5 bg-[#161916] border border-[#2ecc71]/30 rounded-lg text-xs">
-                        <span className="text-[#2ecc71] font-bold flex items-center gap-1.5 truncate">
-                          <Check className="w-4 h-4 shrink-0" />
-                          <span>الملف المحمل: {fileName}</span>
-                        </span>
-                        <span className="text-[10px] text-[#a0a8a0] bg-[#0d0f0d] px-2 py-0.5 rounded uppercase">
-                          {formData.mediaType}
-                        </span>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between p-2.5 bg-[#161916] border border-[#2ecc71]/30 rounded-lg text-xs">
+                          <span className="text-[#2ecc71] font-bold flex items-center gap-1.5 truncate">
+                            <Check className="w-4 h-4 shrink-0" />
+                            <span>الملف المحمل: {fileName}</span>
+                          </span>
+                          <span className="text-[10px] text-[#a0a8a0] bg-[#0d0f0d] px-2 py-0.5 rounded uppercase font-semibold">
+                            {formData.mediaType}
+                          </span>
+                        </div>
+
+                        {uploadStats && (
+                          <div className="p-2.5 bg-[#2ecc71]/10 border border-[#2ecc71]/30 rounded-lg text-xs text-[#2ecc71] flex items-center gap-2">
+                            <Zap className="w-4 h-4 shrink-0 text-[#2ecc71]" />
+                            <div className="flex-1 text-[11px] leading-relaxed">
+                              <span className="font-bold">تم ضغط الصورة ذكياً: </span>
+                              <span>من {uploadStats.originalSize} إلى <b>{uploadStats.size}</b> (وفرت {uploadStats.savedRatio} من الحجم!)</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="space-y-1.5">
-                    <label className="text-xs text-[#a0a8a0]">رابط الصورة أو الـ GIF أو الفيديو المباشر:</label>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-[#a0a8a0] font-bold">رابط الوسائط (Image / Video URL / Short Path):</label>
+                      {formData.thumbnailUrl.startsWith('media/') && (
+                        <span className="text-[10px] text-[#2ecc71] font-semibold bg-[#2ecc71]/10 px-2 py-0.5 rounded">
+                          مسار مجلد نسبي قصير
+                        </span>
+                      )}
+                      {formData.thumbnailUrl.startsWith('data:') && (
+                        <span className="text-[10px] text-amber-400 font-semibold bg-amber-400/10 px-2 py-0.5 rounded">
+                          ملف مدمج (Base64)
+                        </span>
+                      )}
+                    </div>
+
                     <input
-                      type="url"
+                      type="text"
                       value={formData.thumbnailUrl}
                       onChange={(e) => handleChange('thumbnailUrl', e.target.value)}
-                      placeholder="https://..."
+                      placeholder="media/video.mp4 أو https://..."
                       className="w-full px-3.5 py-2.5 bg-[#161916] border border-[#2a2e2a] focus:border-[#2ecc71] rounded-xl text-xs text-[#eaeaea] dir-ltr text-right focus:outline-none transition-all font-mono"
                     />
+
+                    {/* Quick Short Relative Path Shortcuts */}
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-[11px] text-[#a0a8a0] block font-bold">اختصارات الروابط القصيرة (Short Media Paths):</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleChange('thumbnailUrl', 'media/video.mp4');
+                            handleChange('mediaType', 'video');
+                          }}
+                          className="px-2.5 py-1 bg-[#161916] hover:bg-[#2ecc71]/15 border border-[#2a2e2a] hover:border-[#2ecc71] text-[11px] text-[#eaeaea] rounded-lg font-mono transition-all cursor-pointer dir-ltr"
+                        >
+                          media/video.mp4
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleChange('thumbnailUrl', 'media/thumbnail.jpg');
+                            handleChange('mediaType', 'image');
+                          }}
+                          className="px-2.5 py-1 bg-[#161916] hover:bg-[#2ecc71]/15 border border-[#2a2e2a] hover:border-[#2ecc71] text-[11px] text-[#eaeaea] rounded-lg font-mono transition-all cursor-pointer dir-ltr"
+                        >
+                          media/thumbnail.jpg
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleChange('thumbnailUrl', 'media/animation.gif');
+                            handleChange('mediaType', 'gif');
+                          }}
+                          className="px-2.5 py-1 bg-[#161916] hover:bg-[#2ecc71]/15 border border-[#2a2e2a] hover:border-[#2ecc71] text-[11px] text-[#eaeaea] rounded-lg font-mono transition-all cursor-pointer dir-ltr"
+                        >
+                          media/animation.gif
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

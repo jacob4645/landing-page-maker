@@ -41,7 +41,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const embedUrl = getEmbedUrl(config.videoUrl);
 
-  const isDataVideo = config.thumbnailUrl.startsWith('data:video/') || config.thumbnailUrl.endsWith('.mp4') || config.thumbnailUrl.endsWith('.webm');
+  const mediaSrc = config.rawMediaDataUrl || config.thumbnailUrl;
+  const isDataVideo = mediaSrc.startsWith('data:video/') || mediaSrc.endsWith('.mp4') || mediaSrc.endsWith('.webm') || mediaType === 'video';
 
   return (
     <div className="w-full space-y-8">
@@ -65,10 +66,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
           />
-        ) : mediaType === 'video' || isDataVideo ? (
+        ) : isDataVideo ? (
           <div className="relative w-full h-full flex items-center justify-center bg-black">
             <video
-              src={config.thumbnailUrl}
+              src={mediaSrc}
               controls
               autoPlay
               loop
@@ -86,7 +87,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-gradient-to-t from-[#0d0f0d] to-[#161916]">
             {/* Thumbnail Image or GIF */}
             <img
-              src={imgError || !config.thumbnailUrl ? 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1200&auto=format&fit=crop' : config.thumbnailUrl}
+              src={imgError || !mediaSrc ? 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1200&auto=format&fit=crop' : mediaSrc}
               alt={config.videoTitle}
               onError={() => setImgError(true)}
               className="w-full h-full object-cover opacity-85 group-hover:scale-105 transition-transform duration-500 ease-out"

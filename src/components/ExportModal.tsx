@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { X, Download, Copy, Check, FileCode, ExternalLink, Code2, Sparkles, Layers } from 'lucide-react';
+import { X, Download, Copy, Check, FileCode, Code2, Sparkles, Folder, FolderPlus, Link as LinkIcon, Film, Image as ImageIcon, Zap, Info, Layers } from 'lucide-react';
 import { VideoConfig } from '../types';
 import { generateStandaloneHtml } from '../utils/generateHtml';
+import { downloadDataUrlAsFile } from '../utils/mediaFolder';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -43,6 +44,44 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadMediaAsset = () => {
+    const rawData = config.rawMediaDataUrl || (config.thumbnailUrl.startsWith('data:') ? config.thumbnailUrl : '');
+    if (!rawData) {
+      alert('لا يوجد ملف وسائط محلي للتحميل. استخدم رابط مباشر أو ارفع ملف من جهازك.');
+      return;
+    }
+
+    let defaultName = config.mediaFileName || 'video.mp4';
+    if (config.thumbnailUrl.startsWith('media/')) {
+      defaultName = config.thumbnailUrl.replace('media/', '');
+    }
+
+    downloadDataUrlAsFile(rawData, defaultName);
+  };
+
+  const handleSetShortPathMode = () => {
+    let fileName = config.mediaFileName || (config.mediaType === 'video' ? 'video.mp4' : config.mediaType === 'gif' ? 'animation.gif' : 'thumbnail.jpg');
+    if (!fileName.includes('.')) {
+      fileName += config.mediaType === 'video' ? '.mp4' : config.mediaType === 'gif' ? '.gif' : '.jpg';
+    }
+    const shortPath = `media/${fileName}`;
+    onUpdateConfig({
+      ...config,
+      thumbnailUrl: shortPath,
+      mediaFolder: 'media',
+      mediaFileName: fileName,
+    });
+  };
+
+  const handleSetBase64Mode = () => {
+    if (config.rawMediaDataUrl) {
+      onUpdateConfig({
+        ...config,
+        thumbnailUrl: config.rawMediaDataUrl,
+      });
+    }
   };
 
   return (
@@ -99,6 +138,87 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {activeTab === 'download' ? (
             <div className="space-y-6">
+              {/* Short Relative Media Link & Folder Setup Card */}
+              <div className="bg-[#0d0f0d] border border-[#2ecc71]/30 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-[#2a2e2a] pb-2">
+                  <span className="text-xs font-bold text-[#2ecc71] flex items-center gap-1.5">
+                    <Folder className="w-4 h-4" />
+                    <span>طريقة رابط وسائط السكريبت المصدَّر (Short Media Link):</span>
+                  </span>
+                  <span className="text-[10px] bg-[#2ecc71]/10 text-[#2ecc71] px-2 py-0.5 rounded font-mono font-bold">
+                    {config.thumbnailUrl.startsWith('media/') ? 'مسار مجلد نسبي قصير' : config.thumbnailUrl.startsWith('data:') ? 'تدميج Base64' : 'رابط URL مباشر'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={handleSetShortPathMode}
+                    className={`p-3 rounded-xl border text-right transition-all cursor-pointer space-y-1 ${
+                      config.thumbnailUrl.startsWith('media/')
+                        ? 'bg-[#2ecc71]/15 border-[#2ecc71] text-[#eaeaea]'
+                        : 'bg-[#161916] border-[#2a2e2a] text-[#a0a8a0] hover:border-[#2ecc71]/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 text-xs font-bold text-[#2ecc71]">
+                      <FolderPlus className="w-4 h-4" />
+                      <span>مسار مجلد نسبي قصير (موصى به)</span>
+                    </div>
+                    <p className="text-[11px] text-[#a0a8a0] leading-relaxed">
+                      يجعل الرابط في السكريبت قصير ونظيف جداً مثل: <code className="text-emerald-300 font-mono">media/{config.mediaFileName || 'video.mp4'}</code>
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSetBase64Mode}
+                    disabled={!config.rawMediaDataUrl && !config.thumbnailUrl.startsWith('data:')}
+                    className={`p-3 rounded-xl border text-right transition-all cursor-pointer space-y-1 ${
+                      config.thumbnailUrl.startsWith('data:')
+                        ? 'bg-[#2ecc71]/15 border-[#2ecc71] text-[#eaeaea]'
+                        : 'bg-[#161916] border-[#2a2e2a] text-[#a0a8a0] hover:border-[#2ecc71]/50 disabled:opacity-40 disabled:cursor-not-allowed'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 text-xs font-bold text-[#2ecc71]">
+                      <Zap className="w-4 h-4" />
+                      <span>تضمين مباشر في ملف واحد (Base64)</span>
+                    </div>
+                    <p className="text-[11px] text-[#a0a8a0] leading-relaxed">
+                      يُدمج كود الوسائط كاملاً داخل ملف HTML بدون الحاجة لإنشاء مجلد خارجي
+                    </p>
+                  </button>
+                </div>
+
+                {/* Folder Structure Preview Box */}
+                {config.thumbnailUrl.startsWith('media/') && (
+                  <div className="p-3 bg-[#161916] border border-[#2a2e2a] rounded-lg space-y-2">
+                    <div className="flex items-center justify-between text-xs text-[#2ecc71]">
+                      <span className="font-bold flex items-center gap-1">
+                        <Info className="w-3.5 h-3.5" />
+                        <span>هيكلية مجلد المشروع المطلوب وضعها في الاستضافة:</span>
+                      </span>
+                      {config.rawMediaDataUrl && (
+                        <button
+                          type="button"
+                          onClick={handleDownloadMediaAsset}
+                          className="px-2.5 py-1 bg-[#2ecc71] hover:bg-[#1e9e57] text-[#0d0f0d] text-[11px] font-bold rounded-md transition-all cursor-pointer flex items-center gap-1"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>تنزيل ملف الميديا المرفق</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <pre className="p-2.5 bg-[#0d0f0d] rounded text-[11px] font-mono text-emerald-300 dir-ltr text-left">
+{`📁 project/
+├── 📄 index.html
+└── 📁 media/
+    └── 🎬 ${config.mediaFileName || 'video.mp4'}`}
+                    </pre>
+                  </div>
+                )}
+              </div>
+
               {/* Export Parameters Summary Card */}
               <div className="bg-[#0d0f0d] border border-[#2a2e2a] rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between border-b border-[#2a2e2a] pb-2">
@@ -133,11 +253,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   </div>
 
                   <div>
-                    <span className="text-[#a0a8a0] block text-[11px]">رابط الصورة المصغرة (Image URL):</span>
+                    <span className="text-[#a0a8a0] block text-[11px]">رابط الوسائط المصدَّر (Image / Video Path):</span>
                     <input
                       type="text"
                       value={config.thumbnailUrl}
                       onChange={(e) => onUpdateConfig({ ...config, thumbnailUrl: e.target.value })}
+                      placeholder="media/video.mp4"
                       className="w-full mt-1 px-3 py-1.5 bg-[#161916] border border-[#2a2e2a] rounded-lg text-xs text-[#eaeaea] focus:border-[#2ecc71] focus:outline-none dir-ltr text-right font-mono"
                     />
                   </div>
