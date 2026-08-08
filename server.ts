@@ -7,20 +7,25 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Ensure uploads directory exists
+  // Ensure uploads and media directories exist in the project root
   const uploadsDir = path.join(process.cwd(), "uploads");
+  const mediaDir = path.join(process.cwd(), "media");
+  
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  if (!fs.existsSync(mediaDir)) {
+    fs.mkdirSync(mediaDir, { recursive: true });
   }
 
   // Parse JSON payloads (support large base64 uploads up to 100MB for videos)
   app.use(express.json({ limit: "100mb" }));
   app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 
-  // Serve static uploaded files
-  app.use("/uploads", express.static(uploadsDir, {
+  // Static options for media files
+  const staticMediaOptions = {
     maxAge: "1d",
-    setHeaders: (res, filePath) => {
+    setHeaders: (res: express.Response, filePath: string) => {
       if (filePath.endsWith(".mp4")) {
         res.setHeader("Content-Type", "video/mp4");
       } else if (filePath.endsWith(".webm")) {
@@ -29,7 +34,45 @@ async function startServer() {
         res.setHeader("Content-Type", "image/gif");
       }
     }
-  }));
+  };
+
+  // Serve static uploaded files from both /uploads and /media routes
+  app.use("/uploads", express.static(uploadsDir, staticMediaOptions));
+  app.use("/media", express.static(mediaDir, staticMediaOptions));
+
+  // API Endpoint to list all hosted files stored in the script folders
+  app.get("/api/media", (req, res) => {
+    try {
+      const host = req.get("host") || "localhost:3000";
+      const protocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
+      const baseUrl = `${protocol}://${host}`;
+
+      const getFilesFromDir = (dir: string, route: string) => {
+        if (!fs.existsSync(dir)) return [];
+        return fs.readdirSync(dir).map((file) => {
+          const stats = fs.statSync(path.join(dir, file));
+          return {
+            fileName: file,
+            path: `${route}/${file}`,
+            url: `${baseUrl}/${route}/${file}`,
+            size: stats.size,
+            createdAt: stats.birthtime,
+          };
+        });
+      };
+
+      const uploadsFiles = getFilesFromDir(uploadsDir, "uploads");
+      const mediaFiles = getFilesFromDir(mediaDir, "media");
+
+      return res.json({
+        success: true,
+        uploads: uploadsFiles,
+        media: mediaFiles,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || "Failed to list media files" });
+    }
+  });
 
   // API Endpoint to upload files to server storage
   app.post("/api/upload", (req, res) => {
@@ -51,21 +94,30 @@ async function startServer() {
         .replace(/[^a-z0-9_.-]/g, "_");
       
       const finalFileName = `${timeStamp}_${sanitizedOriginalName}`;
-      const filePath = path.join(uploadsDir, finalFileName);
 
-      fs.writeFileSync(filePath, buffer);
+      // Save to BOTH uploads/ and media/ directories inside the script
+      const uploadPath = path.join(uploadsDir, finalFileName);
+      const mediaPath = path.join(mediaDir, finalFileName);
+
+      fs.writeFileSync(uploadPath, buffer);
+      fs.writeFileSync(mediaPath, buffer);
 
       // Determine host protocol and origin
       const host = req.get("host") || "localhost:3000";
       const protocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
       const hostedUrl = `${protocol}://${host}/uploads/${finalFileName}`;
+      const mediaUrl = `${protocol}://${host}/media/${finalFileName}`;
 
-      console.log(`[Storage] Saved hosted media: ${filePath} -> ${hostedUrl}`);
+      console.log(`[Storage] Saved hosted media to script folders:`);
+      console.log(` - ${uploadPath}`);
+      console.log(` - ${mediaPath}`);
 
       return res.json({
         success: true,
         fileName: finalFileName,
         hostedUrl,
+        mediaUrl,
+        relativePath: `media/${finalFileName}`,
         size: buffer.length,
         mimeType: mimeType || "application/octet-stream",
       });

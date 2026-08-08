@@ -6,8 +6,33 @@ export interface ServerUploadResult {
   success: boolean;
   fileName: string;
   hostedUrl: string;
+  mediaUrl?: string;
+  relativePath?: string;
   size: number;
   mimeType: string;
+}
+
+export interface StoredMediaFile {
+  fileName: string;
+  path: string;
+  url: string;
+  size: number;
+  createdAt: string;
+}
+
+export async function fetchStoredMediaList(): Promise<{ uploads: StoredMediaFile[]; media: StoredMediaFile[] }> {
+  try {
+    const res = await fetch('/api/media');
+    if (!res.ok) throw new Error('Failed to fetch stored media list');
+    const data = await res.json();
+    return {
+      uploads: data.uploads || [],
+      media: data.media || [],
+    };
+  } catch (err) {
+    console.warn('Error fetching stored media list:', err);
+    return { uploads: [], media: [] };
+  }
 }
 
 export async function uploadMediaToServer(
